@@ -31,6 +31,8 @@ class SnakeEnv2(gym.Env):
         updown = np.random.randint(2)
         self.__direction = np.array((updown, 0 if updown else 1)) * np.power(-1, np.random.randint(2))
         self.__changed_direction = True
+        self.__last_positions = deque()
+        self.__no_new_positions_counter = 0
 
         # body setup
         if self.body is not None:
@@ -57,6 +59,7 @@ class SnakeEnv2(gym.Env):
 
     def step(self, action):
         self.time_steps += 1
+        self.__no_new_positions_counter += 1
 
         # Direction change with flag buffering for optimization - - - - - - - -
         new_dir = self.__new_dir(action)
@@ -69,10 +72,17 @@ class SnakeEnv2(gym.Env):
         # Head move - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
         head_pos = self.get_geom_pos(self.body[0]) / self.__tile_size
         new_head_pos = (self.get_geom_pos(self.body[0]) + self.__direction * self.__tile_size) / self.__tile_size
+        for pos in self.__last_positions:
+            if (new_head_pos != pos).all():
+                self.__no_new_positions_counter = 0
+                break
+        if len(self.__last_positions) > 200:
+            self.__last_positions.popleft()
+        self.__last_positions.append(new_head_pos)
 
         # quitting conditions - - - - - - - - - - - - - - - - - - - - - - - - -
         if not self.__validate_pos(new_head_pos, 1, len(self.body)-1) \
-                or self.time_steps >= 400:
+                or self.__no_new_positions_counter >= 50:
             return self.get_state(), 0.0, True, {'len': len(self.body), 't': self.time_steps}
 
         # check if fruit is eaten - - - - - - - - - - - - - - - - - - - - - - -
