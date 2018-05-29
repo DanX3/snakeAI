@@ -8,42 +8,17 @@ from time import sleep
 import visualize
 import threading
 
+GRID = (10, 10)
+THREAD_COUNT = 8
 
-def run_single_experiment():
-    grid = (5, 5)
-    area = grid[0] * grid[1]
-    myenv = SnakeEnv(grid=grid)
-    Q = np.array((np.zeros(area*area*4)))
-    Q = np.reshape(Q, (area*area, 4))
-    body_conf = {}
-
-    while True:
-        head_pos, fruit_pos = myenv.reset()
-        t = 1
-        observation = None
-        while True:
-            myenv.render()
-            myenv.unwrapped.viewer.window.on_key_press = key_press
-
-            state_idx = state_to_idx(head_pos, fruit_pos , grid, myenv.get_body_configuration())
-            choices = Q[state_idx]
-            # print choices
-            choice = np.argmax(choices)
-            observation, reward, done, info = myenv.step(choice)
-            head_pos, fruit_pos = observation
-            # updates the whole matrix slightly despite the fruit position
-            # if the snake hit the wall, the fruit position is not important
-            if reward > 0.0:
-                Q[state_idx][choice] += reward
-            else:
-                for i in range(area):
-                    ith_state = state_to_idx(head_pos, (i/grid[1], i%grid[1]), grid, myenv.get_body_configuration())
-                    Q[ith_state][choice] += reward * (0.1 if ith_state != state_idx else 1.0)
-            t += 1
-            if done:
-                # print "Episode finished after {} timesteps".format(t)
-                myenv.close()
-                break
+def split_load(start, end, workers_count):
+    count = end - start + 1
+    loads = []
+    for i in range(workers_count):
+        load = count / workers_count + (i < count % workers_count)
+        loads.append((start, start + load - 1))
+        start += load
+    return loads
 
 
 def fitness(env, genome, config, render=False):
@@ -71,24 +46,37 @@ def fitness(env, genome, config, render=False):
             # line_fun = lambda x: 10 - 0.5 * x
             # genome.fitness = 10*info['len'] - line_fun(info['t'])  # * tanh(turns / 1e3)
             return info['t']
-            break
 
 
 def softmax(x):
     return np.exp(x) / np.sum(np.exp(x))
 
-def run_timeout(signum, frame):
-    print 'interrupted function'
-    raise Exception("Too much time")
+
+def thread_worker(genomes, config, start, end):
+    print 'worker in ({}, {})'.format(start, end)
+    myenv = SnakeEnv2(grid=np.array(GRID), render=False)
+    for i in range(start, end+1):
+        genome_id, genome = genomes[i]
+        genome.fitness = fitness(myenv, genome, config, render=False)
+        # print "Genome #{} fitness = {}".format(genome_id, genome.fitness)
+    myenv.close()
 
 
 def eval_genomes(genomes, config):
-    grid = (10, 10)
-    myenv = SnakeEnv2(grid=np.array(grid), render=False)
-    for genome_id, genome in genomes:
-        genome.fitness = fitness(myenv, genome, config, render=False)
-        # print "Genome #{} fitness score = {}".format(genome_id, genome.fitness)
-    myenv.close()
+    threads = []
+    loads = split_load(0, len(genomes)-1, THREAD_COUNT)
+    for start, end in loads:
+        new_thread = threading.Thread(target=thread_worker,
+                                      args=(genomes, config, start, end))
+        threads.append(new_thread)
+    
+    for thread in threads:
+        thread.start()
+
+    for thread in threads:
+        thread.join()
+    del threads[:]
+
 
 def run(config_file):
     config = neat.Config(neat.DefaultGenome, neat.DefaultReproduction,
@@ -99,7 +87,7 @@ def run(config_file):
     stats = neat.StatisticsReporter()
     p.add_reporter(stats)
     p.add_reporter(neat.Checkpointer(5))
-    winner = p.run(eval_genomes, 250)
+    winner = p.run(eval_genomes, 20)
     print "Best Genome {!s}".format(winner)
     # winner_net = neat.nn.FeedForwardNetwork.create(winner, config)
     fitness(SnakeEnv2(grid=np.array((10, 10))), winner, config, render=True)
