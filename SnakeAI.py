@@ -7,9 +7,11 @@ from math import tanh
 from time import sleep
 import visualize
 import threading
+import cProfile
 
-GRID = (10, 10)
-THREAD_COUNT = 8
+GRID = (20, 20)
+THREAD_COUNT = 2
+GENERATIONS = 50
 
 def split_load(start, end, workers_count):
     count = end - start + 1
@@ -29,7 +31,7 @@ def fitness(env, genome, config, render=False):
     # print dir
     while True:
         if render:
-            sleep(0.1)
+            sleep(0.034)
             env.render()
         actions = net.activate([head_pos[0], head_pos[1],
                                 fruit_pos[0], fruit_pos[1],
@@ -42,7 +44,9 @@ def fitness(env, genome, config, render=False):
 
         head_pos, fruit_pos, dir, tiles_obs, tiles_to_fruit = obs
         if done:
-            genome.fitness = info['t']  # * tanh(turns / 1e3)
+            fit = lambda len, time: min(0.5*time, 20) + max(5*len-190, 0)
+            # genome.fitness = info['t']  # * tanh(turns / 1e3)
+            genome.fitness = fit(info['len'], info['t'])
             # line_fun = lambda x: 10 - 0.5 * x
             # genome.fitness = 10*info['len'] - line_fun(info['t'])  # * tanh(turns / 1e3)
             return info['t']
@@ -87,10 +91,11 @@ def run(config_file):
     stats = neat.StatisticsReporter()
     p.add_reporter(stats)
     p.add_reporter(neat.Checkpointer(5))
-    winner = p.run(eval_genomes, 20)
+    winner = p.run(eval_genomes, GENERATIONS)
     print "Best Genome {!s}".format(winner)
     # winner_net = neat.nn.FeedForwardNetwork.create(winner, config)
-    fitness(SnakeEnv2(grid=np.array((10, 10))), winner, config, render=True)
+    raw_input('Press ENTER to run the simulation')
+    fitness(SnakeEnv2(grid=np.array(GRID)), winner, config, render=True)
     visualize.plot_stats(stats, ylog=False, view=True)
     visualize.plot_species(stats, view=True)
     
