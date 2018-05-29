@@ -7,7 +7,6 @@ from math import tanh
 from time import sleep
 import visualize
 import threading
-import signal
 
 
 def run_single_experiment():
@@ -75,7 +74,6 @@ def fitness(env, genome, config, render=False):
             break
 
 
-# softmax = lambda x : np.exp(x)/np.sum(np.exp(x))
 def softmax(x):
     return np.exp(x) / np.sum(np.exp(x))
 
@@ -88,15 +86,8 @@ def eval_genomes(genomes, config):
     grid = (10, 10)
     myenv = SnakeEnv2(grid=np.array(grid), render=False)
     for genome_id, genome in genomes:
-        # signal.signal(signal.SIGALRM, run_timeout)
-        # signal.alarm(1)
-        # try:
         genome.fitness = fitness(myenv, genome, config, render=False)
-        # except:
-            # print 'skipping genome {}'.format(genome_id)
-            # genome.fitness = 0
         # print "Genome #{} fitness score = {}".format(genome_id, genome.fitness)
-    # signal.alarm(0)
     myenv.close()
 
 def run(config_file):
